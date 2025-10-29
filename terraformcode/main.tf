@@ -111,19 +111,20 @@ resource "aws_ecs_task_definition" "test_task_definition" {
     network_mode             = "awsvpc"
     requires_compatibilities = ["FARGATE"]
     cpu                      = "1024"
-    memory                   = "3072"
+    memory                   = "2048"
     
     execution_role_arn = var.execution_role_arn
 
     container_definitions = jsonencode([
     {
-      name      = "my-app"
+      name      = "${var.image_name}"
       image     = "${var.ecr_uri}:${var.image_tag}"
       essential = true
       portMappings = [
         {
           containerPort = 80
-          hostPort      = 80
+          #hostPort      = 80
+          protocol ="tcp"
         }
       ]
     }
