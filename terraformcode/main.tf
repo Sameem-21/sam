@@ -13,7 +13,7 @@ provider "aws" {
 }
 #networking components
 resource "aws_vpc" "test_vpc"{
-    cidr_block = "0.0.0.0/16"
+    cidr_block = "11.0.0.0/16"
     tags = {
       name="test_vpc"
     }
@@ -110,8 +110,8 @@ resource "aws_ecs_task_definition" "test_task_definition" {
     family                   = "test_task_definition"
     network_mode             = "awsvpc"
     requires_compatibilities = ["FARGATE"]
-    cpu                      = "1000"
-    memory                   = "3000"
+    cpu                      = "1024"
+    memory                   = "3072"
     
     execution_role_arn = var.execution_role_arn
 
