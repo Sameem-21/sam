@@ -1,51 +1,63 @@
 #!/bin/bash
 set -e
-echo "select any of the below options as mode"
-echo "options : dockerfile"
-echo "          dockerhub"
-echo "          local"
+
+echo "Select deployment mode:"
+echo "  dockerfile - Build from Dockerfile in Git repo"
+echo "  dockerhub  - Pull image from Docker Hub"
+echo "  local      - Use existing local image"
+read -p "Enter mode: " MODE
 
 # === INPUTS ===
-MODE="$1"                  # Options: dockerfile | dockerhub | local
-IMAGE_NAME="$2"            # Image name (e.g., my-app)
-DOCKERFILE_PATH="./Dockerfile"  # Used only in dockerfile mode
-DOCKERHUB_IMAGE="$3"       # Used only in dockerhub mode (e.g., nginx:latest)
-GIT_REPO="$4"
+read -p "Enter image name (e.g., my-app): " IMAGE_NAME
+read -p "Enter image tag (e.g., v1.0.0): " IMAGE_TAG
+
+
+if [ "$MODE" == "dockerhub" ]; then
+  read -p "Enter Docker Hub image (e.g., nginx:latest): " DOCKERHUB_IMAGE
+
+fi
+
+if [ "$MODE" == "dockerfile" ]; then
+  read -p "Enter Git repo URL: " GIT_REPO
+fi
+
+read -p "Enter ECR repository name: " REPO_NAME
 
 # === CONFIG ===
 REGION="ap-south-1"
 ACCOUNT_ID="588082971984"
-REPO_NAME="$IMAGE_NAME-repo"
-#GIT_REPO="https://github.com/<your-username>/<your-repo>.git"
+ECR_URI="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME"
 
 # === AUTH TO ECR ===
-aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 588082971984.dkr.ecr.ap-south-1.amazonaws.com
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
 
-# === CLONE REPO (only for dockerfile mode) ===
+# === CREATE ECR REPO IF MISSING ===
+if ! aws ecr describe-repositories --repository-names "$REPO_NAME" --region "$REGION" > /dev/null 2>&1; then
+  echo "🛠️ Creating ECR repository: $REPO_NAME"
+  aws ecr create-repository --repository-name "$REPO_NAME" --region "$REGION"
+fi
+
+# === BUILD FROM DOCKERFILE ===
 if [ "$MODE" == "dockerfile" ]; then
   git clone "$GIT_REPO"
   cd "$(basename "$GIT_REPO" .git)"
-  docker build -f "$DOCKERFILE_PATH" -t "$IMAGE_NAME" .
+  docker build -f "./Dockerfile" -t "$IMAGE_NAME" .
 fi
 
-# === PULL FROM DOCKER HUB (dockerhub mode) ===
+# === PULL FROM DOCKER HUB ===
 if [ "$MODE" == "dockerhub" ]; then
   docker pull "$DOCKERHUB_IMAGE"
-  docker tag "$DOCKERHUB_IMAGE" "$IMAGE_NAME:latest"
+  docker tag "$DOCKERHUB_IMAGE" "$IMAGE_NAME:$IMAGE_TAG"
 fi
 
-# === VERIFY LOCAL IMAGE EXISTS (local mode) ===
+# === VERIFY LOCAL IMAGE ===
 if [ "$MODE" == "local" ]; then
-  if ! docker image inspect "$IMAGE_NAME:latest" > /dev/null 2>&1; then
-    echo "Local image '$IMAGE_NAME:latest' not found."
+  if ! docker image inspect "$IMAGE_NAME:$IMAGE_TAG" > /dev/null 2>&1; then
+    echo "Local image '$IMAGE_NAME:$IMAGE_TAG' not found."
     exit 1
   fi
 fi
 
 # === TAG & PUSH TO ECR ===
-docker build -t testing .
-
-docker tag testing:latest 588082971984.dkr.ecr.ap-south-1.amazonaws.com/testing:latest
-docker push 588082971984.dkr.ecr.ap-south-1.amazonaws.com/testing:latest
-
-
+docker tag "$IMAGE_NAME:$IMAGE_TAG" "$ECR_URI:$IMAGE_TAG"
+docker push "$ECR_URI:$IMAGE_TAG"
